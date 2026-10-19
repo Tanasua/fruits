@@ -1,0 +1,105 @@
+<!doctype html>
+<html lang="uk">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width,initial-scale=1">
+<title>Танцюючі фрукти 2D: вихід по одному</title>
+<style>
+  html, body { margin: 0; height: 100%; background: #000; overflow: hidden; }
+  canvas { display: block; width: 100vw; height: 100vh; object-fit: contain; }
+</style>
+</head>
+<body>
+<canvas id="c"></canvas>
+<script>
+// Концепція: фрукт з-за правого краю стрибає ліворуч до центру (6 с, три стрибки по 2 с),
+// на 3 с зупиняється і плавно хитається, потім ще три стрибки ліворуч і зникає за лівим краєм (6 с).
+// Рухається вся фігура цілком: руки, ноги й обличчя не змінюються.
+// Один стрибок = 2 с = один такт при 120 BPM, тож стрибки лягають на такти.
+const T_HOP = 2;             // с на один стрибок
+const T_ENTER = 3 * T_HOP;   // 6 с
+const T_HOLD = 3;            // 3 с у центрі
+const T_EXIT = 3 * T_HOP;    // 6 с
+const DURATION = T_ENTER + T_HOLD + T_EXIT;
+const TAU = Math.PI * 2;
+window.LOOP_SEC = DURATION;
+
+const q = new URLSearchParams(location.search);
+const W = Number(q.get('w')) || 1920;
+const H = Number(q.get('h')) || 1080;
+const k = H / 1080;
+
+const canvas = document.getElementById('c');
+canvas.width = W;
+canvas.height = H;
+const ctx = canvas.getContext('2d');
+
+const GROUND = H * 0.84;
+const CX = W / 2;
+const HOP_H = 150 * k;       // висота стрибка
+const SWAY = 0.1;            // макс. кут хитання, рад
+
+const smooth = (u) => u * u * (3 - 2 * u);
+const lerp = (a, b, u) => a + (b - a) * u;
+
+// Стан фрукта в момент t: x (центр), y (зсув вгору), нахил, сквош
+function state(t, w) {
+  const offRight = W + w / 2 + 40 * k;
+  const offLeft = -w / 2 - 40 * k;
+
+  if (t < T_ENTER) {
+    const i = Math.floor(t / T_HOP);
+    const u = (t - i * T_HOP) / T_HOP;
+    const xs = [offRight, lerp(offRight, CX, 1 / 3), lerp(offRight, CX, 2 / 3), CX];
+    const x = lerp(xs[i], xs[i + 1], smooth(u));
+    const hop = Math.pow(Math.sin(Math.PI * u), 2);
+    return { x, y: -HOP_H * hop, rot: -0.05 * Math.sin(TAU * u), sq: Math.pow(Math.cos(Math.PI * u), 2) };
+  }
+
+  if (t < T_ENTER + T_HOLD) {
+    const u = (t - T_ENTER) / T_HOLD;
+    const env = Math.pow(Math.sin(Math.PI * u), 2);   // 0 на початку й наприкінці — без ривка
+    return { x: CX, y: 0, rot: SWAY * env * Math.sin(TAU * (t - T_ENTER) / 2), sq: 0 };
+  }
+
+  const te = t - T_ENTER - T_HOLD;
+  const i = Math.floor(te / T_HOP);
+  const u = (te - i * T_HOP) / T_HOP;
+  const xs = [CX, lerp(CX, offLeft, 1 / 3), lerp(CX, offLeft, 2 / 3), offLeft];
+  const x = lerp(xs[i], xs[i + 1], smooth(u));
+  const hop = Math.pow(Math.sin(Math.PI * u), 2);
+  return { x, y: -HOP_H * hop, rot: 0.05 * Math.sin(TAU * u), sq: Math.pow(Math.cos(Math.PI * u), 2) };
+}
+
+function draw(t, img) {
+  ctx.fillStyle = '#000';
+  ctx.fillRect(0, 0, W, H);
+  const w = img.width * k;
+  const h = img.height * k;
+  const s = state(t, w);
+
+  ctx.save();
+  ctx.translate(s.x, GROUND + s.y);   // опора: низ по центру
+  ctx.rotate(s.rot);
+  ctx.scale(1 + 0.1 * s.sq, 1 - 0.1 * s.sq);
+  ctx.drawImage(img, -w / 2, -h, w, h);
+  ctx.restore();
+}
+
+const img = new Image();
+img.onload = () => {
+  window.renderAt = (t) => draw(t, img);
+  window.ready = true;
+  if (!q.has('frame')) {
+    const t0 = performance.now();
+    const loop = () => {
+      draw(((performance.now() - t0) / 1000) % DURATION, img);
+      requestAnimationFrame(loop);
+    };
+    loop();
+  }
+};
+img.src = 'assets/pineapple.png';
+</script>
+</body>
+</html>
