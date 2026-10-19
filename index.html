@@ -43,7 +43,7 @@ document.body.appendChild(renderer.domElement);
 const scene = new THREE.Scene();
 scene.background = new THREE.Color(0x000000);
 const camera = new THREE.PerspectiveCamera(40, W / H, 0.1, 100);
-camera.position.set(0, 0.2, 10.5);
+camera.position.set(0, 0.2, 11.5);
 camera.lookAt(0, 0, 0);
 
 scene.add(new THREE.AmbientLight(0xffffff, 0.55));
@@ -298,7 +298,7 @@ const glowTex = canvasTex(256, (c, s) => {
   c.fillRect(0, 0, s, s);
 });
 
-const XS = [-5.25, -3.15, -1.05, 1.05, 3.15, 5.25];
+const XS = [-4.9, -2.95, -1.0, 1.0, 2.95, 4.9];
 const builders = [pineapple, strawberry, orange, apple, watermelon, lemon];
 
 const fruits = builders.map((build, i) => {
@@ -357,7 +357,7 @@ scene.add(new THREE.Points(starGeo, new THREE.PointsMaterial({ size: 0.12, verte
 // b = час у ударах. Усі функції мають період, що ділить 120 (1, 2, 4, 8, 12, 24, 40).
 function update(t) {
   const b = t / BEAT;
-  camera.position.x = 0.6 * Math.sin(TAU * b / LOOP_BEATS);
+  camera.position.x = 0.3 * Math.sin(TAU * b / LOOP_BEATS);
   camera.lookAt(0, 0, 0);
 
   fruits.forEach((f, i) => {
@@ -369,7 +369,7 @@ function update(t) {
     const sway = Math.sin(TAU * ph / 4);
 
     f.root.position.set(f.x + 0.25 * sway, f.y0 + 0.55 * env * hop, 0);
-    f.root.rotation.set(0, 0.5 * Math.sin(TAU * ph / 8) * (0.5 + 0.5 * Math.cos(TAU * b / 12)), 0.14 * Math.sin(TAU * ph / 2));
+    f.root.rotation.set(0, 0.35 * Math.sin(TAU * ph / 8) * (0.5 + 0.5 * Math.cos(TAU * b / 12)), 0.14 * Math.sin(TAU * ph / 2));
     f.body.scale.set(1 + 0.12 * land, 1 - 0.12 * land, 1 + 0.12 * land);
 
     const raise = Math.max(0, Math.sin(TAU * b / 24 + i * 0.6));
