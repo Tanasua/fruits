@@ -31,7 +31,8 @@ const OUTPUT_FORMAT = 'mp3_44100_128';
 const VOICE_SETTINGS = { stability: 0.35, similarity_boost: 0.8, style: 0.6, use_speaker_boost: true, speed: 0.8 };
 const PREVIOUS_TEXT = 'Ура! Привіт-привіт, малята! Дивіться, хто до нас весело стрибає!';
 const PAUSE = '0.5s';
-const text = (name) => `<break time="${PAUSE}" />${name[0].toUpperCase()}${name.slice(1)}!`;
+// Репліка з cast.json (line), а без неї — сама назва з окликом
+const text = (c) => `<break time="${PAUSE}" />${c.line ?? `${c.name[0].toUpperCase()}${c.name.slice(1)}!`}`;
 const opt = (name) => process.argv.find((a) => a.startsWith(`--${name}=`))?.split('=')[1];
 const ATTEMPTS = Number(opt('attempts') ?? 5);
 const ONLY = opt('only')?.split(',').filter(Boolean);
@@ -86,7 +87,7 @@ for (const c of cast) {
       method: 'POST',
       headers,
       body: JSON.stringify({
-        text: text(c.name), model_id: MODEL_ID, voice_settings: VOICE_SETTINGS, previous_text: PREVIOUS_TEXT, seed,
+        text: text(c), model_id: MODEL_ID, voice_settings: VOICE_SETTINGS, previous_text: PREVIOUS_TEXT, seed,
       }),
     });
     if (!res.ok) throw new Error(`${c.id}: HTTP ${res.status} ${await res.text()}`);
