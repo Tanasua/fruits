@@ -8,6 +8,7 @@
 //   node fruits2d/tools/tts.mjs            # генерує fruits2d/audio/<id>.mp3 для cast.json
 //   node fruits2d/tools/tts.mjs --force    # перегенерувати наявні файли
 //   node fruits2d/tools/tts.mjs --force --only=pear --attempts=20   # один кліп, більше спроб
+//   node fruits2d/tools/tts.mjs --force --only=banana --seed=100     # інший дубль
 //
 // Моделі й параметри задаються тут, щоб їх легко було змінити.
 //
@@ -35,6 +36,7 @@ const PAUSE = '0.5s';
 const text = (c) => `<break time="${PAUSE}" />${c.line ?? `${c.name[0].toUpperCase()}${c.name.slice(1)}!`}`;
 const opt = (name) => process.argv.find((a) => a.startsWith(`--${name}=`))?.split('=')[1];
 const ATTEMPTS = Number(opt('attempts') ?? 5);
+const SEED = Number(opt('seed') ?? 1);   // інший seed — інший дубль тієї самої репліки
 const ONLY = opt('only')?.split(',').filter(Boolean);
 // Пауза вийшла, якщо до першого звуку вище -40 dBFS щонайменше стільки мс
 const MIN_LEAD_MS = 250;
@@ -82,7 +84,7 @@ for (const c of cast) {
   }
   const url = `${API}/text-to-speech/${voiceId}?output_format=${OUTPUT_FORMAT}`;
   let best = null;
-  for (let seed = 1; seed <= ATTEMPTS; seed++) {
+  for (let seed = SEED; seed < SEED + ATTEMPTS; seed++) {
     const res = await fetch(url, {
       method: 'POST',
       headers,

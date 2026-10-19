@@ -21,6 +21,10 @@ on:
         description: Спроб на кліп, якщо початок обрізано
         type: number
         default: 5
+      seed:
+        description: Початковий seed (інше число — інший дубль)
+        type: number
+        default: 1
   push:
     paths:
       - .github/workflows/voice.yml
@@ -63,7 +67,7 @@ jobs:
         run: >-
           node fruits2d/tools/tts.mjs
           ${{ (github.event_name == 'push' || inputs.force) && '--force' || '' }}
-          --only=${{ inputs.only }} --attempts=${{ inputs.attempts || 5 }}
+          --only=${{ inputs.only }} --attempts=${{ inputs.attempts || 5 }} --seed=${{ inputs.seed || 1 }}
 
       - name: Commit clips
         run: |
