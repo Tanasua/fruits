@@ -1,12 +1,12 @@
 // Покадровий рендер index.html (Three.js у Chromium через Playwright) -> ffmpeg -> MP4.
 //
 // Використання:
-//   node render/render.mjs --out fruits.mp4 [--fps 30] [--w 1920] [--h 1080] [--audio track.mp3]
+//   node render/render.mjs --out fruits.mp4 [--page fruits2d/index.html] [--fps 30] [--audio track.mp3]
 //   node render/render.mjs --still 0,15,30 --dir frames      # PNG-кадри для перевірки
 //
 // Змінні середовища:
 //   PLAYWRIGHT_MODULE  шлях до ESM-модуля playwright (за замовчуванням — пакет "playwright")
-//   THREE_FILE         обов'язково: локальний three.module.js версії 0.169.0; запит до CDN перехоплюється
+//   THREE_FILE         для 3D (index.html): локальний three.module.js 0.169.0; запит до CDN перехоплюється
 //
 // Петля: 60 с (120 ударів при 120 BPM). Кадри беремо за t = f / fps, f = 0 .. 60*fps - 1,
 // тож останній кадр і перший стикуються без шва.
@@ -28,8 +28,8 @@ const W = Number(args.w ?? 1920);
 const H = Number(args.h ?? 1080);
 const FPS = Number(args.fps ?? 30);
 const OUT = args.out ?? 'fruits.mp4';
-const THREE_FILE = process.env.THREE_FILE;
-if (!THREE_FILE) throw new Error('Задайте THREE_FILE=/шлях/до/three/build/three.module.js (three@0.169.0)');
+const THREE_FILE = process.env.THREE_FILE;   // потрібен лише для 3D-сцени index.html
+const PAGE = args.page ?? 'index.html';
 
 const { chromium } = await import(process.env.PLAYWRIGHT_MODULE ?? 'playwright');
 
@@ -54,10 +54,12 @@ const page = await browser.newPage({ viewport: { width: W, height: H }, deviceSc
 page.on('pageerror', (e) => console.error('pageerror:', e.message));
 page.on('console', (m) => { if (m.type() === 'error') console.error('console:', m.text()); });
 
-await page.route('https://unpkg.com/three@0.169.0/build/three.module.js', (r) =>
-  r.fulfill({ path: THREE_FILE, contentType: 'text/javascript', headers: { 'access-control-allow-origin': '*' } }));
+if (THREE_FILE) {
+  await page.route('https://unpkg.com/three@0.169.0/build/three.module.js', (r) =>
+    r.fulfill({ path: THREE_FILE, contentType: 'text/javascript', headers: { 'access-control-allow-origin': '*' } }));
+}
 
-await page.goto(`http://127.0.0.1:${port}/index.html?frame&w=${W}&h=${H}`);
+await page.goto(`http://127.0.0.1:${port}/${PAGE}?frame&w=${W}&h=${H}`);
 await page.waitForFunction(() => window.ready === true, null, { timeout: 60_000 });
 
 const grab = (t) => page.evaluate((time) => {

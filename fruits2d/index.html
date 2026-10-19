@@ -1,0 +1,96 @@
+<!doctype html>
+<html lang="uk">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width,initial-scale=1">
+<title>Танцюючі фрукти 2D</title>
+<style>
+  html, body { margin: 0; height: 100%; background: #000; overflow: hidden; }
+  canvas { display: block; width: 100vw; height: 100vh; object-fit: contain; }
+</style>
+</head>
+<body>
+<canvas id="c"></canvas>
+<script>
+// Рухається вся фігура цілком: підстрибування, сквош, нахил, зсув. Руки, ноги й обличчя не змінюються.
+// 120 BPM: один удар = 0.5 с. Петля = 120 ударів = 60 с. Періоди всіх рухів ділять 120,
+// тож t = 60 с збігається з t = 0 і шва немає.
+const BPM = 120;
+const BEAT = 60 / BPM;
+const LOOP_BEATS = 120;
+const LOOP_SEC = LOOP_BEATS * BEAT;
+const TAU = Math.PI * 2;
+window.LOOP_SEC = LOOP_SEC;
+
+const q = new URLSearchParams(location.search);
+const W = Number(q.get('w')) || 1920;
+const H = Number(q.get('h')) || 1080;
+const k = H / 1080;
+
+const canvas = document.getElementById('c');
+canvas.width = W;
+canvas.height = H;
+const ctx = canvas.getContext('2d');
+
+const NAMES = ['pineapple', 'banana', 'apple', 'pear'];
+const GROUND = H * 0.84;
+
+function load(src) {
+  return new Promise((resolve, reject) => {
+    const im = new Image();
+    im.onload = () => resolve(im);
+    im.onerror = reject;
+    im.src = src;
+  });
+}
+
+const figures = NAMES.map((name, i) => ({ name, i, phase: i * 0.25, cx: W * (i + 0.5) / NAMES.length }));
+
+function draw(t) {
+  ctx.fillStyle = '#000';
+  ctx.fillRect(0, 0, W, H);
+  const b = t / BEAT;
+
+  for (const f of figures) {
+    const ph = b + f.phase;
+    const frac = ph - Math.floor(ph);
+    const hop = Math.abs(Math.sin(Math.PI * ph));     // 0 на долі, 1 у верхній точці
+    const land = Math.exp(-frac * 8);                 // сквош у момент контакту з землею
+    const env = 0.6 + 0.4 * Math.sin(TAU * b / 40 + f.i * 0.9);
+
+    const dy = -70 * k * env * hop;
+    const dx = 18 * k * Math.sin(TAU * ph / 4);
+    const rot = 0.07 * Math.sin(TAU * ph / 2);
+    const sx = (1 + 0.1 * land) * (1 - 0.06 * Math.abs(Math.sin(TAU * b / 24 + f.i * 0.5)));
+    const sy = 1 - 0.1 * land;
+
+    const img = images[f.name];
+    const w = img.width * k;
+    const h = img.height * k;
+
+    ctx.save();
+    ctx.translate(f.cx + dx, GROUND + dy);   // точка опори: низ по центру
+    ctx.rotate(rot);
+    ctx.scale(sx, sy);
+    ctx.drawImage(img, -w / 2, -h, w, h);
+    ctx.restore();
+  }
+}
+
+const images = {};
+Promise.all(NAMES.map((n) => load(`assets/${n}.png`).then((im) => { images[n] = im; })))
+  .then(() => {
+    window.renderAt = (t) => draw(t);
+    window.ready = true;
+    if (!q.has('frame')) {
+      const t0 = performance.now();
+      const loop = () => {
+        draw(((performance.now() - t0) / 1000) % LOOP_SEC);
+        requestAnimationFrame(loop);
+      };
+      loop();
+    }
+  });
+</script>
+</body>
+</html>
