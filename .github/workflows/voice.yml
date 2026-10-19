@@ -1,0 +1,59 @@
+# Озвучка назв фруктів через ElevenLabs: секрети репозиторію доступні лише тут, в Actions.
+# Генерує fruits2d/audio/<id>.mp3 для cast.json і комітить їх у ту саму гілку.
+# Зведення доріжки (mix_audio.py) і рендер відео робляться окремо, вже з цими файлами.
+#
+# Секрети репозиторію: ELEVENLABS_API_KEY, ELEVENLABS_VOICE_ID.
+
+name: voice
+
+on:
+  workflow_dispatch:
+    inputs:
+      force:
+        description: Перегенерувати наявні кліпи
+        type: boolean
+        default: false
+  push:
+    paths:
+      - .github/workflows/voice.yml
+      - fruits2d/cast.json
+      - fruits2d/tools/tts.mjs
+
+permissions:
+  contents: write
+
+concurrency:
+  group: voice-${{ github.ref }}
+  cancel-in-progress: false
+
+jobs:
+  tts:
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+
+      - uses: actions/setup-node@v4
+        with:
+          node-version: 22
+
+      - name: Check secrets
+        env:
+          ELEVENLABS_API_KEY: ${{ secrets.ELEVENLABS_API_KEY }}
+          ELEVENLABS_VOICE_ID: ${{ secrets.ELEVENLABS_VOICE_ID }}
+        run: |
+          [ -n "$ELEVENLABS_API_KEY" ] || { echo "::error::немає секрету ELEVENLABS_API_KEY"; exit 1; }
+          [ -n "$ELEVENLABS_VOICE_ID" ] || { echo "::error::немає секрету ELEVENLABS_VOICE_ID"; exit 1; }
+
+      - name: Generate clips
+        env:
+          ELEVENLABS_API_KEY: ${{ secrets.ELEVENLABS_API_KEY }}
+          ELEVENLABS_VOICE_ID: ${{ secrets.ELEVENLABS_VOICE_ID }}
+        run: node fruits2d/tools/tts.mjs ${{ inputs.force && '--force' || '' }}
+
+      - name: Commit clips
+        run: |
+          git add fruits2d/audio
+          if git diff --cached --quiet; then echo "без змін"; exit 0; fi
+          git -c user.name="github-actions[bot]" -c user.email="41898282+github-actions[bot]@users.noreply.github.com" \
+            commit -m "Add ElevenLabs voice clips for cast.json"
+          git push
