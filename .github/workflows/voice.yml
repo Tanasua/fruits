@@ -36,6 +36,9 @@ jobs:
         with:
           node-version: 22
 
+      - name: Install ffmpeg
+        run: sudo apt-get update -q && sudo apt-get install -yq ffmpeg
+
       - name: Check secrets
         env:
           ELEVENLABS_API_KEY: ${{ secrets.ELEVENLABS_API_KEY }}
@@ -48,12 +51,13 @@ jobs:
         env:
           ELEVENLABS_API_KEY: ${{ secrets.ELEVENLABS_API_KEY }}
           ELEVENLABS_VOICE_ID: ${{ secrets.ELEVENLABS_VOICE_ID }}
-        run: node fruits2d/tools/tts.mjs ${{ inputs.force && '--force' || '' }}
+        # push спрацьовує лише на зміну назв, налаштувань чи workflow — тоді перегенеровуємо все
+        run: node fruits2d/tools/tts.mjs ${{ (github.event_name == 'push' || inputs.force) && '--force' || '' }}
 
       - name: Commit clips
         run: |
           git add fruits2d/audio
           if git diff --cached --quiet; then echo "без змін"; exit 0; fi
           git -c user.name="github-actions[bot]" -c user.email="41898282+github-actions[bot]@users.noreply.github.com" \
-            commit -m "Add ElevenLabs voice clips for cast.json"
+            commit -m "Update ElevenLabs voice clips for cast.json"
           git push
