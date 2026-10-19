@@ -57,9 +57,14 @@ function state(t, w) {
   }
 
   if (t < T_ENTER + T_HOLD) {
-    const u = (t - T_ENTER) / T_HOLD;
+    const uh = t - T_ENTER;
+    const u = uh / T_HOLD;
     const env = Math.pow(Math.sin(Math.PI * u), 2);   // 0 на початку й наприкінці — без ривка
-    return { x: CX, y: 0, rot: SWAY * env * Math.sin(TAU * (t - T_ENTER) / 2), sq: 0 };
+    // Сквош у холді: після приземлення (1) плавно згасає до 0, перед наступним стрибком плавно повертається до 1.
+    // Так стики з приземленням і стрибком не мають ривка.
+    const settle = 1 - smooth(Math.min(1, uh / 0.5));
+    const press = smooth(Math.max(0, Math.min(1, (uh - (T_HOLD - 0.5)) / 0.5)));
+    return { x: CX, y: 0, rot: SWAY * env * Math.sin(TAU * uh / 2), sq: settle + press };
   }
 
   const te = t - T_ENTER - T_HOLD;
@@ -89,6 +94,7 @@ function draw(t, img) {
 const img = new Image();
 img.onload = () => {
   window.renderAt = (t) => draw(t, img);
+  window.stateAt = (t) => state(t, img.width * k);
   window.ready = true;
   if (!q.has('frame')) {
     const t0 = performance.now();
