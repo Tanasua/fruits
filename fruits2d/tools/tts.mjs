@@ -27,8 +27,8 @@ const ROOT = path.resolve(path.dirname(fileURLToPath(import.meta.url)), '..');
 const API = 'https://api.elevenlabs.io/v1';
 const MODEL_ID = 'eleven_multilingual_v2';   // підтримує українську
 const OUTPUT_FORMAT = 'mp3_44100_128';
-// Нижча стабільність і вищий style — жвавіша, емоційніша подача
-const VOICE_SETTINGS = { stability: 0.35, similarity_boost: 0.8, style: 0.6, use_speaker_boost: true };
+// Нижча стабільність і вищий style — жвавіша, емоційніша подача; speed < 1 — повільніше (1 — звичайна)
+const VOICE_SETTINGS = { stability: 0.35, similarity_boost: 0.8, style: 0.6, use_speaker_boost: true, speed: 0.8 };
 const PREVIOUS_TEXT = 'Ура! Привіт-привіт, малята! Дивіться, хто до нас весело стрибає!';
 const PAUSE = '0.5s';
 const text = (name) => `<break time="${PAUSE}" />${name[0].toUpperCase()}${name.slice(1)}!`;
