@@ -13,6 +13,14 @@ on:
         description: Перегенерувати наявні кліпи
         type: boolean
         default: false
+      only:
+        description: Лише ці id через кому (порожньо — всі)
+        type: string
+        default: ''
+      attempts:
+        description: Спроб на кліп, якщо початок обрізано
+        type: number
+        default: 5
   push:
     paths:
       - .github/workflows/voice.yml
@@ -52,7 +60,10 @@ jobs:
           ELEVENLABS_API_KEY: ${{ secrets.ELEVENLABS_API_KEY }}
           ELEVENLABS_VOICE_ID: ${{ secrets.ELEVENLABS_VOICE_ID }}
         # push спрацьовує лише на зміну назв, налаштувань чи workflow — тоді перегенеровуємо все
-        run: node fruits2d/tools/tts.mjs ${{ (github.event_name == 'push' || inputs.force) && '--force' || '' }}
+        run: >-
+          node fruits2d/tools/tts.mjs
+          ${{ (github.event_name == 'push' || inputs.force) && '--force' || '' }}
+          --only=${{ inputs.only }} --attempts=${{ inputs.attempts || 5 }}
 
       - name: Commit clips
         run: |

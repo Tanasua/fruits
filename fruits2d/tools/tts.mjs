@@ -7,6 +7,7 @@
 // Запуск:
 //   node fruits2d/tools/tts.mjs            # генерує fruits2d/audio/<id>.mp3 для cast.json
 //   node fruits2d/tools/tts.mjs --force    # перегенерувати наявні файли
+//   node fruits2d/tools/tts.mjs --force --only=pear --attempts=20   # один кліп, більше спроб
 //
 // Моделі й параметри задаються тут, щоб їх легко було змінити.
 //
@@ -26,7 +27,9 @@ const MODEL_ID = 'eleven_multilingual_v2';   // підтримує україн�
 const OUTPUT_FORMAT = 'mp3_44100_128';
 const VOICE_SETTINGS = { stability: 0.6, similarity_boost: 0.8, style: 0.2, use_speaker_boost: true };
 const PREVIOUS_TEXT = 'Подивись, хто до нас прийшов!';
-const ATTEMPTS = 5;
+const opt = (name) => process.argv.find((a) => a.startsWith(`--${name}=`))?.split('=')[1];
+const ATTEMPTS = Number(opt('attempts') ?? 5);
+const ONLY = opt('only')?.split(',').filter(Boolean);
 // Обрізаний початок: звук вище -40 dBFS починається раніше ніж за 10 мс від початку файлу,
 // а перші 10 мс уже гучніші за -30 dB відносно піку (природний вступ наростає тихіше).
 const MIN_LEAD_MS = 10;
@@ -70,6 +73,7 @@ const clipped = (o) => o.leadMs < MIN_LEAD_MS && o.db > MAX_ONSET_DB;
 
 let failed = 0;
 for (const c of cast) {
+  if (ONLY?.length && !ONLY.includes(c.id)) continue;
   const file = path.join(outDir, `${c.id}.mp3`);
   if (existsSync(file) && !args.has('--force')) {
     console.log(`skip ${c.id} (вже є)`);
