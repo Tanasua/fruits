@@ -1,0 +1,421 @@
+<!doctype html>
+<html lang="uk">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width,initial-scale=1">
+<title>Танцюючі фрукти</title>
+<style>
+  html, body { margin: 0; height: 100%; background: #000; overflow: hidden; }
+  canvas { display: block; }
+</style>
+<script type="importmap">
+{ "imports": { "three": "https://unpkg.com/three@0.169.0/build/three.module.js" } }
+</script>
+</head>
+<body>
+<script type="module">
+import * as THREE from 'three';
+
+// 120 BPM: один удар = 0.5 с. Петля = 120 ударів = 60 с.
+// Кожен рух має період, що ділить 120 ударів, тому t = 60 с збігається з t = 0 і шва немає.
+const BPM = 120;
+const BEAT = 60 / BPM;
+const LOOP_BEATS = 120;
+const LOOP_SEC = LOOP_BEATS * BEAT;
+const TAU = Math.PI * 2;
+const UP = new THREE.Vector3(0, 1, 0);
+window.LOOP_SEC = LOOP_SEC;
+
+const q = new URLSearchParams(location.search);
+const FRAME_MODE = q.has('frame');
+const W = Number(q.get('w')) || innerWidth;
+const H = Number(q.get('h')) || innerHeight;
+
+const renderer = new THREE.WebGLRenderer({ antialias: true, preserveDrawingBuffer: true });
+renderer.setPixelRatio(1);
+renderer.setSize(W, H, false);
+if (!FRAME_MODE) {
+  renderer.domElement.style.width = '100vw';
+  renderer.domElement.style.height = '100vh';
+}
+document.body.appendChild(renderer.domElement);
+
+const scene = new THREE.Scene();
+scene.background = new THREE.Color(0x000000);
+const camera = new THREE.PerspectiveCamera(40, W / H, 0.1, 100);
+camera.position.set(0, 0.2, 10.5);
+camera.lookAt(0, 0, 0);
+
+scene.add(new THREE.AmbientLight(0xffffff, 0.55));
+const key = new THREE.DirectionalLight(0xffffff, 2.0);
+key.position.set(4, 6, 8);
+scene.add(key);
+const rim = new THREE.DirectionalLight(0x7fd8ff, 1.2);
+rim.position.set(-6, 3, -5);
+scene.add(rim);
+
+// ---------- helpers ----------
+function canvasTex(size, draw) {
+  const c = document.createElement('canvas');
+  c.width = c.height = size;
+  draw(c.getContext('2d'), size);
+  const t = new THREE.CanvasTexture(c);
+  t.colorSpace = THREE.SRGBColorSpace;
+  return t;
+}
+
+const mat = (color, o = {}) => new THREE.MeshStandardMaterial({ color, roughness: 0.5, metalness: 0, ...o });
+const white = mat(0xffffff, { roughness: 0.2 });
+const ink = mat(0x1d1020, { roughness: 0.3 });
+const irisMat = mat(0x1f9ad6, { roughness: 0.25 });
+const mouthMat = mat(0x6b0f1a, { roughness: 0.6 });
+const tongueMat = mat(0xff7aa2);
+const cheekMat = new THREE.MeshBasicMaterial({ color: 0xff6f91, transparent: true, opacity: 0.55 });
+const leafMat = mat(0x4fa83d, { roughness: 0.6 });
+const leafMat2 = mat(0x7cc24a, { roughness: 0.6 });
+const stemMat = mat(0x6b4a2b, { roughness: 0.8 });
+const yellowMat = mat(0xffe033, { roughness: 0.35 });
+
+// Вістря/листок: основа в base, напрямок dir
+function spike(len, r, m, base, dir) {
+  const p = new THREE.Group();
+  p.position.copy(base);
+  p.quaternion.setFromUnitVectors(UP, dir.clone().normalize());
+  const cone = new THREE.Mesh(new THREE.ConeGeometry(r, len, 12), m);
+  cone.position.y = len / 2;
+  p.add(cone);
+  return p;
+}
+
+// Плоский овальний листок
+function leaf(len, w, m, base, dir) {
+  const p = new THREE.Group();
+  p.position.copy(base);
+  p.quaternion.setFromUnitVectors(UP, dir.clone().normalize());
+  const l = new THREE.Mesh(new THREE.SphereGeometry(1, 16, 12), m);
+  l.scale.set(w, len / 2, w * 0.35);
+  l.position.y = len / 2;
+  p.add(l);
+  return p;
+}
+
+// Обличчя: очі з моргання, брови, відкритий рот з язиком, рум'янець
+function makeFace(s) {
+  const group = new THREE.Group();
+  const eyes = [];
+  for (const side of [-1, 1]) {
+    const eye = new THREE.Group();
+    eye.position.set(side * 0.28 * s, 0.2 * s, 0);
+    eye.add(new THREE.Mesh(new THREE.SphereGeometry(0.17 * s, 24, 16), white));
+    const iris = new THREE.Mesh(new THREE.SphereGeometry(0.095 * s, 20, 12), irisMat);
+    iris.position.z = 0.1 * s;
+    const pupil = new THREE.Mesh(new THREE.SphereGeometry(0.05 * s, 14, 10), ink);
+    pupil.position.z = 0.17 * s;
+    eye.add(iris, pupil);
+    group.add(eye);
+    eyes.push(eye);
+
+    const brow = new THREE.Mesh(new THREE.CapsuleGeometry(0.035 * s, 0.2 * s, 4, 8), ink);
+    brow.position.set(side * 0.28 * s, 0.44 * s, 0.02 * s);
+    brow.rotation.z = Math.PI / 2 + side * 0.2;
+    group.add(brow);
+
+    const cheek = new THREE.Mesh(new THREE.CircleGeometry(0.1 * s, 20), cheekMat);
+    cheek.position.set(side * 0.46 * s, -0.04 * s, 0.1 * s);
+    group.add(cheek);
+  }
+
+  const mouthShape = new THREE.Shape();
+  mouthShape.moveTo(-0.3 * s, 0);
+  mouthShape.absellipse(0, 0, 0.3 * s, 0.26 * s, Math.PI, 2 * Math.PI, false);
+  mouthShape.lineTo(-0.3 * s, 0);
+
+  const tongueShape = new THREE.Shape();
+  tongueShape.moveTo(0.18 * s, -0.14 * s);
+  tongueShape.absellipse(0, -0.14 * s, 0.18 * s, 0.1 * s, 0, Math.PI, false);
+
+  const mouth = new THREE.Group();
+  mouth.position.set(0, -0.12 * s, 0.05 * s);
+  mouth.add(new THREE.Mesh(new THREE.ShapeGeometry(mouthShape, 24), mouthMat));
+  const tongue = new THREE.Mesh(new THREE.ShapeGeometry(tongueShape, 16), tongueMat);
+  tongue.position.z = 0.01 * s;
+  mouth.add(tongue);
+  group.add(mouth);
+
+  return { group, eyes, mouth };
+}
+
+function makeArm(m, rx, shY) {
+  const pivot = new THREE.Group();
+  pivot.position.set(rx, shY, 0);
+  const arm = new THREE.Mesh(new THREE.CapsuleGeometry(0.09, 0.45, 4, 10), m);
+  arm.rotation.z = Math.PI / 2;
+  arm.position.x = 0.3;
+  pivot.add(arm);
+  const hand = new THREE.Mesh(new THREE.SphereGeometry(0.11, 14, 10), m);
+  hand.position.x = 0.62;
+  pivot.add(hand);
+  return pivot;
+}
+
+// ---------- текстури ----------
+const pineTex = canvasTex(512, (c, s) => {
+  c.fillStyle = '#f5b400';
+  c.fillRect(0, 0, s, s);
+  c.strokeStyle = '#b76a00';
+  c.lineWidth = 6;
+  const w = s / 10, h = s / 8;
+  for (let r = 0; r <= 8; r++) {
+    for (let k = -1; k <= 10; k++) {
+      const x = k * w + (r % 2) * w / 2, y = r * h;
+      c.beginPath();
+      c.moveTo(x, y - h / 2); c.lineTo(x + w / 2, y); c.lineTo(x, y + h / 2); c.lineTo(x - w / 2, y);
+      c.closePath();
+      c.stroke();
+    }
+  }
+});
+
+const berryTex = canvasTex(256, (c, s) => {
+  c.fillStyle = '#e8242e';
+  c.fillRect(0, 0, s, s);
+  c.fillStyle = '#ffe066';
+  for (let i = 0; i < 260; i++) {
+    c.beginPath();
+    c.ellipse(Math.random() * s, Math.random() * s, 2.5, 3.5, 0, 0, TAU);
+    c.fill();
+  }
+});
+
+const orangeTex = canvasTex(256, (c, s) => {
+  c.fillStyle = '#ff8c1a';
+  c.fillRect(0, 0, s, s);
+  c.fillStyle = '#e06a05';
+  for (let i = 0; i < 400; i++) {
+    c.beginPath();
+    c.arc(Math.random() * s, Math.random() * s, 1.5, 0, TAU);
+    c.fill();
+  }
+});
+
+// ---------- фрукти ----------
+function pineapple() {
+  const g = new THREE.Group();
+  const body = new THREE.Mesh(new THREE.SphereGeometry(1, 64, 48), mat(0xffffff, { map: pineTex }));
+  body.scale.set(0.85, 1.05, 0.85);
+  g.add(body);
+  for (let k = 0; k < 10; k++) {
+    const a = (k / 10) * TAU;
+    g.add(spike(1.0, 0.1, k % 2 ? leafMat : leafMat2, new THREE.Vector3(0, 0.95, 0),
+      new THREE.Vector3(Math.cos(a) * 0.5, 1, Math.sin(a) * 0.5)));
+  }
+  return { g, face: { y: 0.1, z: 0.8, s: 1 }, rx: 0.85, shY: 0, arm: 0xf5b400, glow: 0xffc400 };
+}
+
+function strawberry() {
+  const g = new THREE.Group();
+  const body = new THREE.Mesh(new THREE.SphereGeometry(1, 64, 48), mat(0xffffff, { map: berryTex, roughness: 0.4 }));
+  body.scale.set(0.9, 1.1, 0.9);
+  g.add(body);
+  const sh = new THREE.Shape();
+  for (let k = 0; k < 10; k++) {
+    const r = k % 2 ? 0.12 : 0.32;
+    const a = (k / 10) * TAU;
+    if (k) sh.lineTo(Math.cos(a) * r, Math.sin(a) * r);
+    else sh.moveTo(Math.cos(a) * r, Math.sin(a) * r);
+  }
+  sh.closePath();
+  const calyx = new THREE.Mesh(new THREE.ExtrudeGeometry(sh, { depth: 0.05, bevelEnabled: false }), leafMat);
+  calyx.rotation.x = -Math.PI / 2;
+  calyx.position.y = 1.08;
+  g.add(calyx);
+  return { g, face: { y: 0.05, z: 0.8, s: 0.95 }, rx: 0.85, shY: 0.1, arm: 0xe8242e, glow: 0xff3050 };
+}
+
+function orange() {
+  const g = new THREE.Group();
+  g.add(new THREE.Mesh(new THREE.SphereGeometry(1, 64, 48), mat(0xffffff, { map: orangeTex, roughness: 0.6 })));
+  g.add(spike(0.3, 0.03, stemMat, new THREE.Vector3(0, 0.97, 0), new THREE.Vector3(0, 1, 0)));
+  g.add(leaf(0.7, 0.22, leafMat, new THREE.Vector3(0.05, 0.95, 0), new THREE.Vector3(1, 0.7, 0.2)));
+  return { g, face: { y: 0, z: 0.93, s: 1 }, rx: 0.95, shY: 0, arm: 0xff8c1a, glow: 0xff8c1a };
+}
+
+function apple() {
+  const g = new THREE.Group();
+  const body = new THREE.Mesh(new THREE.SphereGeometry(1, 64, 48), mat(0xd8212d, { roughness: 0.3 }));
+  body.scale.set(1.0, 0.92, 1.0);
+  g.add(body);
+  g.add(spike(0.4, 0.04, stemMat, new THREE.Vector3(0, 0.9, 0), new THREE.Vector3(0.15, 1, 0)));
+  g.add(leaf(0.7, 0.22, leafMat2, new THREE.Vector3(0.1, 0.9, 0), new THREE.Vector3(1, 0.6, 0)));
+  return { g, face: { y: 0, z: 0.9, s: 1 }, rx: 1.0, shY: 0.05, arm: 0xd8212d, glow: 0xff3b3b };
+}
+
+// Скибочка кавуна: півколо, зелена кірка позаду, червона м'якоть спереду
+function watermelon() {
+  const g = new THREE.Group();
+  const arc = (r) => {
+    const sh = new THREE.Shape();
+    sh.moveTo(-r, 0);
+    sh.absarc(0, 0, r, Math.PI, 0, true);
+    sh.lineTo(-r, 0);
+    return sh;
+  };
+  const rind = new THREE.Mesh(
+    new THREE.ExtrudeGeometry(arc(1.0), { depth: 0.12, bevelEnabled: false, curveSegments: 64 }),
+    mat(0x2e8b3a, { roughness: 0.4 }));
+  rind.position.z = -0.04;
+  g.add(rind);
+  const flesh = new THREE.Mesh(
+    new THREE.ExtrudeGeometry(arc(0.9), { depth: 0.14, bevelEnabled: false, curveSegments: 64 }),
+    mat(0xff3b5c, { roughness: 0.35 }));
+  flesh.position.z = -0.02;
+  g.add(flesh);
+  for (const [x, y] of [[-0.6, 0.2], [0.6, 0.2], [-0.45, 0.62], [0.45, 0.62]]) {
+    const seed = new THREE.Mesh(new THREE.SphereGeometry(0.035, 8, 6), ink);
+    seed.scale.set(0.7, 1.3, 0.5);
+    seed.position.set(x, y, 0.15);
+    g.add(seed);
+  }
+  return { g, face: { y: 0.38, z: 0.12, s: 0.7 }, rx: 0.95, shY: 0.3, arm: 0x2e8b3a, glow: 0x3dff7a };
+}
+
+function lemon() {
+  const g = new THREE.Group();
+  const body = new THREE.Mesh(new THREE.SphereGeometry(1, 64, 48), yellowMat);
+  body.scale.set(1.1, 0.85, 0.95);
+  g.add(body);
+  g.add(spike(0.25, 0.1, yellowMat, new THREE.Vector3(1.05, 0, 0), new THREE.Vector3(1, 0, 0)));
+  g.add(spike(0.25, 0.1, yellowMat, new THREE.Vector3(-1.05, 0, 0), new THREE.Vector3(-1, 0, 0)));
+  return { g, face: { y: 0.05, z: 0.85, s: 0.9 }, rx: 1.0, shY: 0.1, arm: 0xffe033, glow: 0xfff066 };
+}
+
+// ---------- збирання сцени ----------
+const glowTex = canvasTex(256, (c, s) => {
+  const gr = c.createRadialGradient(s / 2, s / 2, 0, s / 2, s / 2, s / 2);
+  gr.addColorStop(0, 'rgba(255,255,255,1)');
+  gr.addColorStop(1, 'rgba(255,255,255,0)');
+  c.fillStyle = gr;
+  c.fillRect(0, 0, s, s);
+});
+
+const XS = [-5.25, -3.15, -1.05, 1.05, 3.15, 5.25];
+const builders = [pineapple, strawberry, orange, apple, watermelon, lemon];
+
+const fruits = builders.map((build, i) => {
+  const f = build();
+  const face = makeFace(f.face.s);
+  face.group.position.set(0, f.face.y, f.face.z);
+  f.g.add(face.group);
+
+  const armMat = mat(f.arm, { roughness: 0.5 });
+  const armR = makeArm(armMat, f.rx, f.shY);
+  f.g.add(armR);
+  const wrapL = new THREE.Group();
+  wrapL.scale.x = -1;
+  const armL = makeArm(armMat, f.rx, f.shY);
+  wrapL.add(armL);
+  f.g.add(wrapL);
+
+  const root = new THREE.Group();
+  root.position.x = XS[i];
+  root.add(f.g);
+  scene.add(root);
+  root.updateMatrixWorld(true);
+  const box = new THREE.Box3().setFromObject(f.g);
+
+  const glow = new THREE.Sprite(new THREE.SpriteMaterial({
+    map: glowTex, color: f.glow, transparent: true, opacity: 0.4,
+    blending: THREE.AdditiveBlending, depthWrite: false,
+  }));
+  scene.add(glow);
+
+  return {
+    root, body: f.g, armR, armL, glow,
+    eyes: face.eyes, mouth: face.mouth,
+    x: XS[i], y0: -1.7 - box.min.y, phase: i * 0.25,
+  };
+});
+
+// Зірки на фоні: мерехтіння з цілою кількістю циклів на петлю, тому зациклення чисте
+const STAR_N = 160;
+const starPos = new Float32Array(STAR_N * 3);
+const starCol = new Float32Array(STAR_N * 3);
+const starK = [], starP = [], starBase = [];
+const PALETTE = [[1, 1, 1], [0.6, 0.9, 1], [1, 0.8, 0.9], [1, 1, 0.7]];
+for (let k = 0; k < STAR_N; k++) {
+  starPos.set([(Math.random() - 0.5) * 32, (Math.random() - 0.5) * 16, -4 - Math.random() * 6], k * 3);
+  starK.push(15 + Math.floor(Math.random() * 46));
+  starP.push(Math.random() * TAU);
+  starBase.push(PALETTE[k % PALETTE.length]);
+}
+const starGeo = new THREE.BufferGeometry();
+starGeo.setAttribute('position', new THREE.BufferAttribute(starPos, 3));
+starGeo.setAttribute('color', new THREE.BufferAttribute(starCol, 3));
+scene.add(new THREE.Points(starGeo, new THREE.PointsMaterial({ size: 0.12, vertexColors: true })));
+
+// ---------- анімація ----------
+// b = час у ударах. Усі функції мають період, що ділить 120 (1, 2, 4, 8, 12, 24, 40).
+function update(t) {
+  const b = t / BEAT;
+  camera.position.x = 0.6 * Math.sin(TAU * b / LOOP_BEATS);
+  camera.lookAt(0, 0, 0);
+
+  fruits.forEach((f, i) => {
+    const ph = b + f.phase;
+    const frac = ph - Math.floor(ph);
+    const hop = Math.abs(Math.sin(Math.PI * ph));   // 0 на долі, 1 у верхній точці
+    const land = Math.exp(-frac * 8);                // сквош у момент контакту
+    const env = 0.6 + 0.4 * Math.sin(TAU * b / 40 + i * 0.9);
+    const sway = Math.sin(TAU * ph / 4);
+
+    f.root.position.set(f.x + 0.25 * sway, f.y0 + 0.55 * env * hop, 0);
+    f.root.rotation.set(0, 0.5 * Math.sin(TAU * ph / 8) * (0.5 + 0.5 * Math.cos(TAU * b / 12)), 0.14 * Math.sin(TAU * ph / 2));
+    f.body.scale.set(1 + 0.12 * land, 1 - 0.12 * land, 1 + 0.12 * land);
+
+    const raise = Math.max(0, Math.sin(TAU * b / 24 + i * 0.6));
+    const pumpR = -0.6 + 0.45 * Math.sin(TAU * ph / 2);
+    const pumpL = -0.6 + 0.45 * Math.sin(TAU * ph / 2 + Math.PI);
+    f.armR.rotation.z = pumpR * (1 - raise) + 1.3 * raise;
+    f.armL.rotation.z = pumpL * (1 - raise) + 1.3 * raise;
+
+    f.mouth.scale.y = 0.35 + 0.65 * Math.pow(1 - hop, 3);
+    const blink = (((b + i * 1.7) / 8) % 1) > 0.96 ? 0.1 : 1;
+    f.eyes.forEach((e) => { e.scale.y = blink; });
+
+    f.glow.position.set(f.x + 0.25 * sway, -1.5, -1.2);
+    f.glow.scale.setScalar(3.2 + 0.6 * land);
+    f.glow.material.opacity = 0.3 + 0.3 * land;
+  });
+
+  for (let k = 0; k < STAR_N; k++) {
+    const br = 0.15 + 0.85 * (0.5 + 0.5 * Math.sin(TAU * b * starK[k] / LOOP_BEATS + starP[k]));
+    const c = starBase[k];
+    starCol[k * 3] = br * c[0];
+    starCol[k * 3 + 1] = br * c[1];
+    starCol[k * 3 + 2] = br * c[2];
+  }
+  starGeo.attributes.color.needsUpdate = true;
+}
+
+window.renderAt = (t) => {
+  update(t);
+  renderer.render(scene, camera);
+};
+window.ready = true;
+
+if (!FRAME_MODE) {
+  addEventListener('resize', () => {
+    renderer.setSize(innerWidth, innerHeight, false);
+    camera.aspect = innerWidth / innerHeight;
+    camera.updateProjectionMatrix();
+  });
+  const t0 = performance.now();
+  const loop = () => {
+    window.renderAt(((performance.now() - t0) / 1000) % LOOP_SEC);
+    requestAnimationFrame(loop);
+  };
+  loop();
+}
+</script>
+</body>
+</html>
