@@ -2,6 +2,7 @@
 //
 // Використання:
 //   node render/render.mjs --out fruits.mp4 [--page fruits2d/index.html] [--fps 30] [--audio track.mp3]
+//   [--from N --to M]  рендер кадрів [N, M) для паралельних частин
 //   node render/render.mjs --still 0,15,30 --dir frames      # PNG-кадри для перевірки
 //
 // Змінні середовища:
@@ -78,25 +79,28 @@ if (args.still) {
   }
 } else {
   const loopSec = await page.evaluate(() => window.LOOP_SEC);
-  const frames = Math.round(loopSec * FPS);
+  const total = Math.round(loopSec * FPS);
+  // --from/--to: діапазон кадрів [from, to), щоб рендерити частинами паралельно
+  const from = Number(args.from ?? 0);
+  const to = Number(args.to ?? total);
   const audioArgs = args.audio ? ['-i', path.resolve(args.audio), '-map', '0:v', '-map', '1:a', '-c:a', 'aac', '-b:a', '192k', '-shortest'] : [];
   const ff = spawn('ffmpeg', [
     '-y', '-loglevel', 'error',
     '-f', 'image2pipe', '-framerate', String(FPS), '-c:v', 'png', '-i', '-',
     ...audioArgs,
-    '-c:v', 'libx264', '-preset', 'slow', '-crf', '18', '-pix_fmt', 'yuv420p', '-movflags', '+faststart',
+    '-c:v', 'libx264', '-preset', args.preset ?? 'medium', '-crf', '18', '-pix_fmt', 'yuv420p', '-movflags', '+faststart',
     OUT,
   ], { stdio: ['pipe', 'inherit', 'inherit'] });
 
-  for (let f = 0; f < frames; f++) {
+  for (let f = from; f < to; f++) {
     const url = await grab(f / FPS);
     if (!ff.stdin.write(Buffer.from(url.split(',')[1], 'base64'))) await once(ff.stdin, 'drain');
-    if (f % 150 === 0) console.log(`frame ${f}/${frames}`);
+    if (f % 150 === 0) console.log(`frame ${f}/${to}`);
   }
   ff.stdin.end();
   const [code] = await once(ff, 'close');
   if (code !== 0) throw new Error(`ffmpeg exited with ${code}`);
-  console.log(`done: ${path.resolve(OUT)} (${frames} frames @ ${FPS} fps)`);
+  console.log(`done: ${path.resolve(OUT)} (frames ${from}-${to - 1} of ${total} @ ${FPS} fps)`);
 }
 
 await browser.close();

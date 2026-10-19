@@ -1,0 +1,198 @@
+[
+  {
+    "id": "pineapple",
+    "name": "ананас",
+    "file": "assets/pineapple.png",
+    "w": 420,
+    "h": 730
+  },
+  {
+    "id": "banana",
+    "name": "банан",
+    "file": "assets/banana.png",
+    "w": 413,
+    "h": 829
+  },
+  {
+    "id": "apple",
+    "name": "яблучко",
+    "file": "assets/apple.png",
+    "w": 491,
+    "h": 609
+  },
+  {
+    "id": "pear",
+    "name": "грушка",
+    "file": "assets/pear.png",
+    "w": 473,
+    "h": 700
+  },
+  {
+    "id": "orange",
+    "name": "апельсин",
+    "file": "assets/orange.png",
+    "w": 440,
+    "h": 585
+  },
+  {
+    "id": "strawberry",
+    "name": "полуниця",
+    "file": "assets/strawberry.png",
+    "w": 539,
+    "h": 628
+  },
+  {
+    "id": "grape",
+    "name": "виноград",
+    "file": "assets/grape.png",
+    "w": 475,
+    "h": 619
+  },
+  {
+    "id": "watermelon",
+    "name": "кавунчик",
+    "file": "assets/watermelon.png",
+    "w": 478,
+    "h": 550
+  },
+  {
+    "id": "peach",
+    "name": "персик",
+    "file": "assets/peach.png",
+    "w": 469,
+    "h": 570
+  },
+  {
+    "id": "cherry",
+    "name": "вишенька",
+    "file": "assets/cherry.png",
+    "w": 597,
+    "h": 613
+  },
+  {
+    "id": "lemon",
+    "name": "лимон",
+    "file": "assets/lemon.png",
+    "w": 516,
+    "h": 616
+  },
+  {
+    "id": "mango",
+    "name": "манго",
+    "file": "assets/mango.png",
+    "w": 436,
+    "h": 624
+  },
+  {
+    "id": "coconut",
+    "name": "кокос",
+    "file": "assets/coconut.png",
+    "w": 495,
+    "h": 521
+  },
+  {
+    "id": "kiwi",
+    "name": "ківі",
+    "file": "assets/kiwi.png",
+    "w": 478,
+    "h": 531
+  },
+  {
+    "id": "plum",
+    "name": "слива",
+    "file": "assets/plum.png",
+    "w": 484,
+    "h": 624
+  },
+  {
+    "id": "pomegranate",
+    "name": "гранат",
+    "file": "assets/pomegranate.png",
+    "w": 525,
+    "h": 577
+  },
+  {
+    "id": "mandarin",
+    "name": "мандарин",
+    "file": "assets/mandarin.png",
+    "w": 553,
+    "h": 559
+  },
+  {
+    "id": "blueberry",
+    "name": "чорниця",
+    "file": "assets/blueberry.png",
+    "w": 495,
+    "h": 545
+  },
+  {
+    "id": "raspberry",
+    "name": "малинка",
+    "file": "assets/raspberry.png",
+    "w": 477,
+    "h": 604
+  },
+  {
+    "id": "blackberry",
+    "name": "ожина",
+    "file": "assets/blackberry.png",
+    "w": 485,
+    "h": 596
+  },
+  {
+    "id": "apricot",
+    "name": "абрикос",
+    "file": "assets/apricot.png",
+    "w": 466,
+    "h": 574
+  },
+  {
+    "id": "lime",
+    "name": "лайм",
+    "file": "assets/lime.png",
+    "w": 494,
+    "h": 578
+  },
+  {
+    "id": "grapefruit",
+    "name": "грейпфрут",
+    "file": "assets/grapefruit.png",
+    "w": 555,
+    "h": 508
+  },
+  {
+    "id": "melon",
+    "name": "динька",
+    "file": "assets/melon.png",
+    "w": 487,
+    "h": 602
+  },
+  {
+    "id": "gooseberry",
+    "name": "аґрус",
+    "file": "assets/gooseberry.png",
+    "w": 556,
+    "h": 628
+  },
+  {
+    "id": "blackcurrant",
+    "name": "смородина",
+    "file": "assets/blackcurrant.png",
+    "w": 531,
+    "h": 590
+  },
+  {
+    "id": "redcurrant",
+    "name": "порічки",
+    "file": "assets/redcurrant.png",
+    "w": 526,
+    "h": 681
+  },
+  {
+    "id": "sweet_cherry",
+    "name": "черешня",
+    "file": "assets/sweet_cherry.png",
+    "w": 592,
+    "h": 609
+  }
+]
