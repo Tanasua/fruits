@@ -77,13 +77,37 @@ function state(t, w) {
   return { x, y: -HOP_H * hop, rot: 0.05 * Math.sin(TAU * u), sq: Math.pow(Math.cos(Math.PI * u), 2) };
 }
 
-// Видимий інтервал фрукта всередині його слота: від першого до останнього кадру, де він у кадрі.
-function visibleWindow(w) {
+// Межі непрозорих пікселів вирізки (в пікселях зображення): фрукт видно лише там, де є вміст.
+function contentBounds(img) {
+  const c = document.createElement('canvas');
+  c.width = img.width;
+  c.height = img.height;
+  const g = c.getContext('2d');
+  g.drawImage(img, 0, 0);
+  const d = g.getImageData(0, 0, img.width, img.height).data;
+  let minX = img.width;
+  let maxX = 0;
+  for (let y = 0; y < img.height; y++) {
+    for (let x = 0; x < img.width; x++) {
+      if (d[(y * img.width + x) * 4 + 3] > 20) {
+        if (x < minX) minX = x;
+        if (x > maxX) maxX = x;
+      }
+    }
+  }
+  return { left: minX * k, right: (maxX + 1) * k };
+}
+
+// Видимий інтервал фрукта всередині його слота: від першого до останнього кадру, де вміст у кадрі.
+function visibleWindow(f) {
+  const w = f.img.width * k;
   let v0 = null;
   let v1 = null;
   for (let t = 0; t < SLOT; t += 1 / 600) {
     const s = state(t, w);
-    if (s.x + w / 2 > 0 && s.x - w / 2 < W) {
+    const left = s.x - w / 2 + f.bounds.left;
+    const right = s.x - w / 2 + f.bounds.right;
+    if (right > 0 && left < W) {
       if (v0 === null) v0 = t;
       v1 = t;
     }
@@ -95,7 +119,7 @@ function visibleWindow(w) {
 function buildTimeline(fruits) {
   let visibleStart = 0;
   for (const f of fruits) {
-    const { v0, v1 } = visibleWindow(f.img.width * k);
+    const { v0, v1 } = visibleWindow(f);
     f.slotStart = visibleStart - v0;
     f.visibleStart = visibleStart;
     f.visibleEnd = visibleStart + (v1 - v0);
@@ -131,6 +155,7 @@ async function boot() {
     img.src = c.file;
   })));
 
+  for (const f of fruits) f.bounds = contentBounds(f.img);
   const total = buildTimeline(fruits);
   // Озвучка: назва звучить у момент приземлення в центрі (6 с від початку слота).
   window.CUES = fruits.map((f) => ({ id: f.id, name: f.name, t: f.slotStart + T_ENTER }));
