@@ -3,6 +3,7 @@
 // Використання:
 //   node render/render.mjs --out fruits.mp4 [--page fruits2d/index.html] [--fps 30] [--audio track.mp3]
 //   [--from N --to M]  рендер кадрів [N, M) для паралельних частин
+//   [--cues file.json] записати тривалість і моменти озвучки сцени
 //   node render/render.mjs --still 0,15,30 --dir frames      # PNG-кадри для перевірки
 //
 // Змінні середовища:
@@ -67,6 +68,13 @@ const grab = (t) => page.evaluate((time) => {
   window.renderAt(time);
   return document.querySelector('canvas').toDataURL('image/png');
 }, t);
+
+if (args.cues) {
+  // Таймінг сцени для зведення звуку: тривалість і моменти озвучки
+  const timeline = await page.evaluate(() => ({ duration: window.LOOP_SEC, cues: window.CUES }));
+  await writeFile(path.resolve(args.cues), JSON.stringify(timeline, null, 2), 'utf8');
+  console.log(`cues: ${path.resolve(args.cues)}`);
+}
 
 if (args.still) {
   const dir = path.resolve(ROOT, args.dir ?? 'frames');

@@ -23,8 +23,8 @@ const T_HOP = 2;
 const T_ENTER = 3 * T_HOP;       // 6 с
 const T_HOLD = 3;
 const T_EXIT = 3 * T_HOP;        // 6 с
-const SLOT = T_ENTER + T_HOLD + T_EXIT;   // 15 с на фрукт
-const GAP = 1;                   // чорна пауза між фруктами
+const SLOT = T_ENTER + T_HOLD + T_EXIT;   // 15 с на фрукт (з урахуванням виходу за кадр)
+const GAP = 1;                   // чорна пауза між видимими фруктами
 const TAU = Math.PI * 2;
 
 const q = new URLSearchParams(location.search);
@@ -77,24 +77,49 @@ function state(t, w) {
   return { x, y: -HOP_H * hop, rot: 0.05 * Math.sin(TAU * u), sq: Math.pow(Math.cos(Math.PI * u), 2) };
 }
 
+// Видимий інтервал фрукта всередині його слота: від першого до останнього кадру, де він у кадрі.
+function visibleWindow(w) {
+  let v0 = null;
+  let v1 = null;
+  for (let t = 0; t < SLOT; t += 1 / 600) {
+    const s = state(t, w);
+    if (s.x + w / 2 > 0 && s.x - w / 2 < W) {
+      if (v0 === null) v0 = t;
+      v1 = t;
+    }
+  }
+  return { v0, v1 };
+}
+
+// Глобальний старт слота кожного фрукта: між видимими частинами рівно GAP чорного екрана.
+function buildTimeline(fruits) {
+  let visibleStart = 0;
+  for (const f of fruits) {
+    const { v0, v1 } = visibleWindow(f.img.width * k);
+    f.slotStart = visibleStart - v0;
+    f.visibleStart = visibleStart;
+    f.visibleEnd = visibleStart + (v1 - v0);
+    visibleStart = f.visibleEnd + GAP;
+  }
+  return fruits[fruits.length - 1].visibleEnd;
+}
+
 function draw(t, fruits) {
   ctx.fillStyle = '#000';
   ctx.fillRect(0, 0, W, H);
-  const slot = Math.floor(t / (SLOT + GAP));
-  const local = t - slot * (SLOT + GAP);
-  if (slot >= fruits.length || local >= SLOT) return;   // пауза: чорний екран
-
-  const f = fruits[slot];
-  const w = f.img.width * k;
-  const h = f.img.height * k;
-  const s = state(local, w);
-
-  ctx.save();
-  ctx.translate(s.x, GROUND + s.y);
-  ctx.rotate(s.rot);
-  ctx.scale(1 + 0.1 * s.sq, 1 - 0.1 * s.sq);
-  ctx.drawImage(f.img, -w / 2, -h, w, h);
-  ctx.restore();
+  for (const f of fruits) {
+    const local = t - f.slotStart;
+    if (local < 0 || local >= SLOT) continue;
+    const w = f.img.width * k;
+    const h = f.img.height * k;
+    const s = state(local, w);
+    ctx.save();
+    ctx.translate(s.x, GROUND + s.y);
+    ctx.rotate(s.rot);
+    ctx.scale(1 + 0.1 * s.sq, 1 - 0.1 * s.sq);
+    ctx.drawImage(f.img, -w / 2, -h, w, h);
+    ctx.restore();
+  }
 }
 
 async function boot() {
@@ -106,9 +131,9 @@ async function boot() {
     img.src = c.file;
   })));
 
-  const total = fruits.length * (SLOT + GAP) - GAP;
+  const total = buildTimeline(fruits);
   // Озвучка: назва звучить у момент приземлення в центрі (6 с від початку слота).
-  window.CUES = fruits.map((f, i) => ({ id: f.id, name: f.name, t: i * (SLOT + GAP) + T_ENTER }));
+  window.CUES = fruits.map((f) => ({ id: f.id, name: f.name, t: f.slotStart + T_ENTER }));
   window.LOOP_SEC = total;
   window.renderAt = (t) => { draw(t, fruits); ctx.getImageData(0, 0, 1, 1); };
   window.ready = true;
