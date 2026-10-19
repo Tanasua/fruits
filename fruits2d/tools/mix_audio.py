@@ -6,6 +6,9 @@
 
   node render/render.mjs --page fruits2d/parade.html --cues cues.json --still 0 --dir frames
 
+Кліпи починаються з паузи (tts.mjs просить її, щоб модель не обрізала початок слова);
+її тривалість для кожного кліпу лежить в audio/onsets.json, і кліп ставиться на стільки раніше.
+
 Запуск: python3 fruits2d/tools/mix_audio.py <cues.json> <вихідний_файл.m4a>
 """
 import json
@@ -23,13 +26,15 @@ def main():
     out = Path(sys.argv[2]).resolve()
     total = timeline["duration"]
     cues = timeline["cues"]
+    onsets_file = ROOT / "audio" / "onsets.json"
+    onsets = json.loads(onsets_file.read_text(encoding="utf-8")) if onsets_file.exists() else {}
 
     inputs, filters, labels = [], [], []
     for i, c in enumerate(cues):
         clip = ROOT / "audio" / f"{c['id']}.mp3"
         if not clip.exists():
             raise SystemExit(f"немає озвучки: {clip} (запустіть tts.mjs)")
-        ms = round(c["t"] * 1000)
+        ms = max(0, round(c["t"] * 1000) - onsets.get(c["id"], 0))
         inputs += ["-i", str(clip)]
         filters.append(f"[{i}:a]adelay={ms}|{ms},aresample=44100[a{i}]")
         labels.append(f"[a{i}]")

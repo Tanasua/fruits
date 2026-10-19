@@ -11,9 +11,11 @@
 //
 // Моделі й параметри задаються тут, щоб їх легко було змінити.
 //
-// Початок слова: на одному слові модель іноді «з'їдає» перший звук — кліп стартує одразу
-// гучно, з першої мілісекунди. Тому даємо контекст (PREVIOUS_TEXT), а кожен кліп перевіряємо
-// (потрібен ffmpeg) і за обрізаного початку генеруємо знову з іншим seed.
+// Початок слова: коли слово стоїть на самому початку генерації, модель «з'їдає» перший звук.
+// Тому просимо паузу перед словом (<break>, підтримує multilingual v2; v3/v4 — ні), даємо
+// веселий контекст (PREVIOUS_TEXT) і перевіряємо кожен кліп (потрібен ffmpeg): якщо пауза
+// не вийшла, генеруємо знову з іншим seed. Тривалість паузи кожного кліпу пишемо
+// в audio/onsets.json — mix_audio.py зсуває кліп, щоб слово лягало на приземлення.
 
 import { readFile, writeFile, mkdir } from 'node:fs/promises';
 import { existsSync } from 'node:fs';
@@ -25,15 +27,16 @@ const ROOT = path.resolve(path.dirname(fileURLToPath(import.meta.url)), '..');
 const API = 'https://api.elevenlabs.io/v1';
 const MODEL_ID = 'eleven_multilingual_v2';   // підтримує українську
 const OUTPUT_FORMAT = 'mp3_44100_128';
-const VOICE_SETTINGS = { stability: 0.6, similarity_boost: 0.8, style: 0.2, use_speaker_boost: true };
-const PREVIOUS_TEXT = 'Подивись, хто до нас прийшов!';
+// Нижча стабільність і вищий style — жвавіша, емоційніша подача
+const VOICE_SETTINGS = { stability: 0.35, similarity_boost: 0.8, style: 0.6, use_speaker_boost: true };
+const PREVIOUS_TEXT = 'Ура! Привіт-привіт, малята! Дивіться, хто до нас весело стрибає!';
+const PAUSE = '0.5s';
+const text = (name) => `<break time="${PAUSE}" />${name[0].toUpperCase()}${name.slice(1)}!`;
 const opt = (name) => process.argv.find((a) => a.startsWith(`--${name}=`))?.split('=')[1];
 const ATTEMPTS = Number(opt('attempts') ?? 5);
 const ONLY = opt('only')?.split(',').filter(Boolean);
-// Обрізаний початок: звук вище -40 dBFS починається раніше ніж за 10 мс від початку файлу,
-// а перші 10 мс уже гучніші за -30 dB відносно піку (природний вступ наростає тихіше).
-const MIN_LEAD_MS = 10;
-const MAX_ONSET_DB = -30;
+// Пауза вийшла, якщо до першого звуку вище -40 dBFS щонайменше стільки мс
+const MIN_LEAD_MS = 250;
 
 const key = process.env.ELEVENLABS_API_KEY;
 if (!key) throw new Error('Задайте ELEVENLABS_API_KEY');
@@ -56,20 +59,17 @@ const cast = JSON.parse(await readFile(path.join(ROOT, 'cast.json'), 'utf8'));
 const outDir = path.join(ROOT, 'audio');
 await mkdir(outDir, { recursive: true });
 
-// Вступ кліпу: скільки мс до першого звуку вище -40 dBFS і гучність перших 10 мс після нього.
+// Вступ кліпу: скільки мс до першого звуку вище -40 dBFS.
 function onset(mp3) {
   const pcm = execFileSync('ffmpeg', ['-v', 'error', '-i', 'pipe:0', '-ac', '1', '-ar', '44100', '-f', 's16le', 'pipe:1'],
     { input: mp3, maxBuffer: 64 << 20 });
   const a = new Int16Array(pcm.buffer, pcm.byteOffset, pcm.length >> 1);
-  let peak = 1;
-  for (const x of a) peak = Math.max(peak, Math.abs(x));
-  const first = Math.max(0, a.findIndex((x) => Math.abs(x) > 328));
-  const w = a.subarray(first, first + 441);
-  const rms = Math.sqrt(w.reduce((sum, x) => sum + x * x, 0) / Math.max(1, w.length));
-  return { leadMs: first / 44.1, db: 20 * Math.log10(Math.max(rms, 1) / peak) };
+  return { leadMs: Math.max(0, a.findIndex((x) => Math.abs(x) > 328)) / 44.1 };
 }
 
-const clipped = (o) => o.leadMs < MIN_LEAD_MS && o.db > MAX_ONSET_DB;
+const clipped = (o) => o.leadMs < MIN_LEAD_MS;
+const onsetsFile = path.join(outDir, 'onsets.json');
+const onsets = existsSync(onsetsFile) ? JSON.parse(await readFile(onsetsFile, 'utf8')) : {};
 
 let failed = 0;
 for (const c of cast) {
@@ -86,18 +86,20 @@ for (const c of cast) {
       method: 'POST',
       headers,
       body: JSON.stringify({
-        text: c.name, model_id: MODEL_ID, voice_settings: VOICE_SETTINGS, previous_text: PREVIOUS_TEXT, seed,
+        text: text(c.name), model_id: MODEL_ID, voice_settings: VOICE_SETTINGS, previous_text: PREVIOUS_TEXT, seed,
       }),
     });
     if (!res.ok) throw new Error(`${c.id}: HTTP ${res.status} ${await res.text()}`);
     const mp3 = Buffer.from(await res.arrayBuffer());
     const o = onset(mp3);
-    console.log(`  ${c.id} seed ${seed}: вступ ${o.leadMs.toFixed(1)} мс, ${o.db.toFixed(1)} dB${clipped(o) ? ' — обрізано' : ''}`);
+    console.log(`  ${c.id} seed ${seed}: пауза ${o.leadMs.toFixed(0)} мс${clipped(o) ? ' — замала' : ''}`);
     if (!best || o.leadMs > best.o.leadMs) best = { mp3, o };
     if (!clipped(o)) { best = { mp3, o }; break; }
   }
   await writeFile(file, best.mp3);
+  onsets[c.id] = Math.round(best.o.leadMs);
   if (clipped(best.o)) failed++;
   console.log(`${clipped(best.o) ? 'WARN' : 'ok'} ${c.id} "${c.name}"`);
 }
-if (failed) console.log(`::warning::${failed} кліп(ів) з обрізаним початком після ${ATTEMPTS} спроб`);
+await writeFile(onsetsFile, JSON.stringify(onsets, null, 2) + '\n');
+if (failed) console.log(`::warning::${failed} кліп(ів) без паузи на початку після ${ATTEMPTS} спроб`);
