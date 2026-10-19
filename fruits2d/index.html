@@ -54,8 +54,8 @@ function draw(t) {
   for (const f of figures) {
     const ph = b + f.phase;
     const frac = ph - Math.floor(ph);
-    const hop = Math.abs(Math.sin(Math.PI * ph));     // 0 на долі, 1 у верхній точці
-    const land = Math.exp(-frac * 8);                 // сквош у момент контакту з землею
+    const hop = Math.pow(Math.sin(Math.PI * ph), 2);  // 0 на долі, 1 у верхній точці; без зламу в контакті
+    const land = Math.pow(1 - hop, 2);                // сквош найсильніший на контакті і плавно згасає
     const env = 0.6 + 0.4 * Math.sin(TAU * b / 40 + f.i * 0.9);
 
     const dy = -70 * k * env * hop;
