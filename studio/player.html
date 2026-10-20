@@ -1,0 +1,188 @@
+<!doctype html>
+<html lang="uk">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width,initial-scale=1">
+<title>Парад персонажів</title>
+<style>
+  html, body { margin: 0; height: 100%; background: #000; overflow: hidden; }
+  canvas { display: block; width: 100vw; height: 100vh; object-fit: contain; }
+</style>
+</head>
+<body>
+<canvas id="c"></canvas>
+<script>
+// Плеєр ролика: videos/<назва>/ передається як ?video=videos/<назва>.
+// Персонажі виходять по одному, у порядку sequence.json (id; повтори дозволені) або cast.json. Кожен:
+//   0–6 с   три стрибки справа наліво до центру (по 2 с, один такт при 120 BPM)
+//   6–9 с   стоїть у центрі й плавно хитається; у 6 с звучить назва (cues)
+//   9–15 с  три стрибки ліворуч і зникає за лівим краєм
+// Між персонажами 1 с повністю чорного екрана (між видимими межами).
+// Рухається вся фігура цілком: руки, ноги й обличчя не змінюються.
+
+const T_HOP = 2;
+const T_ENTER = 3 * T_HOP;       // 6 с
+const T_HOLD = 3;
+const T_EXIT = 3 * T_HOP;        // 6 с
+const SLOT = T_ENTER + T_HOLD + T_EXIT;   // 15 с на фрукт (з урахуванням виходу за кадр)
+const GAP = 1;                   // чорна пауза між видимими фруктами
+const TAU = Math.PI * 2;
+
+const q = new URLSearchParams(location.search);
+const W = Number(q.get('w')) || 1920;
+const H = Number(q.get('h')) || 1080;
+const k = H / 1080;
+
+const canvas = document.getElementById('c');
+canvas.width = W;
+canvas.height = H;
+const ctx = canvas.getContext('2d');
+
+const GROUND = H * 0.84;
+const CX = W / 2;
+const HOP_H = 150 * k;
+const SWAY = 0.1;
+
+const smooth = (u) => u * u * (3 - 2 * u);
+const lerp = (a, b, u) => a + (b - a) * u;
+
+// Стан фігури в локальний час t (0..SLOT). Сквош і нахил неперервні на всіх стиках.
+function state(t, w) {
+  const offRight = W + w / 2 + 40 * k;
+  const offLeft = -w / 2 - 40 * k;
+
+  if (t < T_ENTER) {
+    const i = Math.floor(t / T_HOP);
+    const u = (t - i * T_HOP) / T_HOP;
+    const xs = [offRight, lerp(offRight, CX, 1 / 3), lerp(offRight, CX, 2 / 3), CX];
+    const x = lerp(xs[i], xs[i + 1], smooth(u));
+    const hop = Math.pow(Math.sin(Math.PI * u), 2);
+    return { x, y: -HOP_H * hop, rot: -0.05 * Math.sin(TAU * u), sq: Math.pow(Math.cos(Math.PI * u), 2) };
+  }
+
+  if (t < T_ENTER + T_HOLD) {
+    const uh = t - T_ENTER;
+    const u = uh / T_HOLD;
+    const env = Math.pow(Math.sin(Math.PI * u), 2);
+    const settle = 1 - smooth(Math.min(1, uh / 0.5));
+    const press = smooth(Math.max(0, Math.min(1, (uh - (T_HOLD - 0.5)) / 0.5)));
+    return { x: CX, y: 0, rot: SWAY * env * Math.sin(TAU * uh / 2), sq: settle + press };
+  }
+
+  const te = t - T_ENTER - T_HOLD;
+  const i = Math.floor(te / T_HOP);
+  const u = (te - i * T_HOP) / T_HOP;
+  const xs = [CX, lerp(CX, offLeft, 1 / 3), lerp(CX, offLeft, 2 / 3), offLeft];
+  const x = lerp(xs[i], xs[i + 1], smooth(u));
+  const hop = Math.pow(Math.sin(Math.PI * u), 2);
+  return { x, y: -HOP_H * hop, rot: 0.05 * Math.sin(TAU * u), sq: Math.pow(Math.cos(Math.PI * u), 2) };
+}
+
+// Межі непрозорих пікселів вирізки (в пікселях зображення): фрукт видно лише там, де є вміст.
+function contentBounds(img) {
+  const c = document.createElement('canvas');
+  c.width = img.width;
+  c.height = img.height;
+  const g = c.getContext('2d');
+  g.drawImage(img, 0, 0);
+  const d = g.getImageData(0, 0, img.width, img.height).data;
+  let minX = img.width;
+  let maxX = 0;
+  for (let y = 0; y < img.height; y++) {
+    for (let x = 0; x < img.width; x++) {
+      if (d[(y * img.width + x) * 4 + 3] > 20) {
+        if (x < minX) minX = x;
+        if (x > maxX) maxX = x;
+      }
+    }
+  }
+  return { left: minX * k, right: (maxX + 1) * k };
+}
+
+// Видимий інтервал фрукта всередині його слота: від першого до останнього кадру, де вміст у кадрі.
+function visibleWindow(f) {
+  const w = f.img.width * k;
+  let v0 = null;
+  let v1 = null;
+  for (let t = 0; t < SLOT; t += 1 / 600) {
+    const s = state(t, w);
+    const left = s.x - w / 2 + f.bounds.left;
+    const right = s.x - w / 2 + f.bounds.right;
+    if (right > 0 && left < W) {
+      if (v0 === null) v0 = t;
+      v1 = t;
+    }
+  }
+  return { v0, v1 };
+}
+
+// Глобальний старт слота кожного фрукта: між видимими частинами рівно GAP чорного екрана.
+function buildTimeline(fruits) {
+  let visibleStart = 0;
+  for (const f of fruits) {
+    const { v0, v1 } = visibleWindow(f);
+    f.slotStart = visibleStart - v0;
+    f.visibleStart = visibleStart;
+    f.visibleEnd = visibleStart + (v1 - v0);
+    visibleStart = f.visibleEnd + GAP;
+  }
+  return fruits[fruits.length - 1].visibleEnd;
+}
+
+function draw(t, fruits) {
+  ctx.fillStyle = '#000';
+  ctx.fillRect(0, 0, W, H);
+  for (const f of fruits) {
+    const local = t - f.slotStart;
+    if (local < 0 || local >= SLOT) continue;
+    const w = f.img.width * k;
+    const h = f.img.height * k;
+    const s = state(local, w);
+    ctx.save();
+    ctx.translate(s.x, GROUND + s.y);
+    ctx.rotate(s.rot);
+    ctx.scale(1 + 0.1 * s.sq, 1 - 0.1 * s.sq);
+    ctx.drawImage(f.img, -w / 2, -h, w, h);
+    ctx.restore();
+  }
+}
+
+async function boot() {
+  const dir = (q.get('video') || '').replace(/\/+$/, '');
+  const base = dir ? `/${dir}/` : '';
+  const cast = await (await fetch(`${base}cast.json`)).json();
+  const byId = Object.fromEntries(cast.map((c) => [c.id, c]));
+  const seqRes = await fetch(`${base}sequence.json`);
+  const seq = seqRes.ok ? await seqRes.json() : cast.map((c) => c.id);
+  const images = {};
+  await Promise.all(cast.map((c) => new Promise((resolve, reject) => {
+    const img = new Image();
+    img.onload = () => { images[c.id] = img; resolve(); };
+    img.onerror = () => reject(new Error(`не завантажилось ${c.file}`));
+    img.src = base + c.file;
+  })));
+  const bounds = Object.fromEntries(cast.map((c) => [c.id, contentBounds(images[c.id])]));
+  const fruits = seq.map((id) => ({ ...byId[id], img: images[id], bounds: bounds[id] }));
+
+  const total = buildTimeline(fruits);
+  // Озвучка: назва звучить у момент приземлення в центрі (T_ENTER від початку слота).
+  window.CUES = fruits.map((f) => ({ id: f.id, name: f.name, t: f.slotStart + T_ENTER }));
+  // Моменти появи в кадрі — для таймкодів в описі
+  window.ITEMS = fruits.map((f) => ({ id: f.id, name: f.name, visibleStart: f.visibleStart, visibleEnd: f.visibleEnd }));
+  window.LOOP_SEC = total;
+  window.renderAt = (t) => { draw(t, fruits); ctx.getImageData(0, 0, 1, 1); };
+  window.ready = true;
+
+  if (!q.has('frame')) {
+    const t0 = performance.now();
+    const loop = () => {
+      draw(((performance.now() - t0) / 1000) % total, fruits);
+      requestAnimationFrame(loop);
+    };
+    loop();
+  }
+}
+boot();
+</script>
+</body>
+</html>

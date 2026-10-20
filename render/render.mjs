@@ -3,7 +3,8 @@
 // Використання:
 //   node render/render.mjs --out fruits.mp4 [--page fruits2d/index.html] [--fps 30] [--audio track.mp3]
 //   [--from N --to M]  рендер кадрів [N, M) для паралельних частин
-//   [--cues file.json] записати тривалість і моменти озвучки сцени
+//   [--cues file.json] записати тривалість, моменти озвучки (cues) і появи в кадрі (items)
+//   [--query "video=videos/x"] додаткові параметри сторінки (для studio/player.html)
 //   node render/render.mjs --still 0,15,30 --dir frames      # PNG-кадри для перевірки
 //
 // Змінні середовища:
@@ -61,7 +62,7 @@ if (THREE_FILE) {
     r.fulfill({ path: THREE_FILE, contentType: 'text/javascript', headers: { 'access-control-allow-origin': '*' } }));
 }
 
-await page.goto(`http://127.0.0.1:${port}/${PAGE}?frame&w=${W}&h=${H}`);
+await page.goto(`http://127.0.0.1:${port}/${PAGE}?frame&w=${W}&h=${H}${args.query ? `&${args.query}` : ''}`);
 await page.waitForFunction(() => window.ready === true, null, { timeout: 60_000 });
 
 const grab = (t) => page.evaluate((time) => {
@@ -71,7 +72,7 @@ const grab = (t) => page.evaluate((time) => {
 
 if (args.cues) {
   // Таймінг сцени для зведення звуку: тривалість і моменти озвучки
-  const timeline = await page.evaluate(() => ({ duration: window.LOOP_SEC, cues: window.CUES }));
+  const timeline = await page.evaluate(() => ({ duration: window.LOOP_SEC, cues: window.CUES, items: window.ITEMS }));
   await writeFile(path.resolve(args.cues), JSON.stringify(timeline, null, 2), 'utf8');
   console.log(`cues: ${path.resolve(args.cues)}`);
 }

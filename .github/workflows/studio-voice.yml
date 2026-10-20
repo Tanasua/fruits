@@ -1,0 +1,72 @@
+# Озвучка ролика з videos/<назва> через ElevenLabs. Секрети репозиторію доступні лише тут, в Actions,
+# тому сесія Claude запускає цей workflow (workflow_dispatch) і чекає коміт з кліпами в ту саму гілку.
+#
+# Секрети репозиторію: ELEVENLABS_API_KEY, ELEVENLABS_VOICE_ID.
+
+name: studio-voice
+run-name: voice ${{ inputs.video }}${{ inputs.only && format(' ({0})', inputs.only) || '' }}
+
+on:
+  workflow_dispatch:
+    inputs:
+      video:
+        description: Папка ролика, напр. videos/mashynky
+        type: string
+        required: true
+      force:
+        description: Перегенерувати наявні кліпи
+        type: boolean
+        default: false
+      only:
+        description: Лише ці id через кому (порожньо — всі)
+        type: string
+        default: ''
+      attempts:
+        description: Спроб на кліп, якщо паузи на початку немає
+        type: number
+        default: 5
+      seed:
+        description: Початковий seed (інше число — інший дубль)
+        type: number
+        default: 1
+
+permissions:
+  contents: write
+
+concurrency:
+  group: studio-voice-${{ github.ref }}
+  cancel-in-progress: false
+
+jobs:
+  tts:
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+
+      - uses: actions/setup-node@v4
+        with:
+          node-version: 22
+
+      - name: Install ffmpeg
+        run: sudo apt-get update -q && sudo apt-get install -yq ffmpeg
+
+      - name: Generate clips
+        env:
+          ELEVENLABS_API_KEY: ${{ secrets.ELEVENLABS_API_KEY }}
+          ELEVENLABS_VOICE_ID: ${{ secrets.ELEVENLABS_VOICE_ID }}
+          VIDEO: ${{ inputs.video }}
+          ONLY: ${{ inputs.only }}
+        run: >-
+          node studio/tts.mjs "$VIDEO"
+          ${{ inputs.force && '--force' || '' }}
+          "--only=$ONLY" --attempts=${{ inputs.attempts }} --seed=${{ inputs.seed }}
+
+      - name: Commit clips
+        env:
+          VIDEO: ${{ inputs.video }}
+        run: |
+          git add "$VIDEO/audio"
+          if git diff --cached --quiet; then echo "без змін"; exit 0; fi
+          git -c user.name="github-actions[bot]" -c user.email="41898282+github-actions[bot]@users.noreply.github.com" \
+            commit -m "Voice clips for $VIDEO"
+          git push
