@@ -194,5 +194,33 @@
     "file": "assets/sweet_cherry.png",
     "w": 592,
     "h": 609
+  },
+  {
+    "id": "orange",
+    "name": "апельсин",
+    "file": "assets/orange.png",
+    "w": 440,
+    "h": 585
+  },
+  {
+    "id": "strawberry",
+    "name": "полуниця",
+    "file": "assets/strawberry.png",
+    "w": 539,
+    "h": 628
+  },
+  {
+    "id": "grape",
+    "name": "виноград",
+    "file": "assets/grape.png",
+    "w": 475,
+    "h": 619
+  },
+  {
+    "id": "watermelon",
+    "name": "кавунчик",
+    "file": "assets/watermelon.png",
+    "w": 478,
+    "h": 550
   }
 ]
